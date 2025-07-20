@@ -1,0 +1,276 @@
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from OpenGL.GLUT import *
+import sys
+from math import cos, sin
+
+# WINDOW
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 600
+
+# Global app state
+current_mode = "menu"
+angle_x = 0
+angle_y = 0
+last_x = 0
+last_y = 0
+is_dragging = False
+
+# 2D variables
+objects = []
+current_color = (1.0, 1.0, 1.0)
+line_width = 2
+start_point = None
+mode = 'line'  # 'point', 'line', 'rect', 'ellipse'
+
+def draw_text(x, y, text):
+    glRasterPos2f(x, y)
+    for ch in text:
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(ch))
+
+# ===================================
+# ========== MODE DISPLAY ===========
+# ===================================
+
+def display():
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+
+    if current_mode == "menu":
+        display_menu()
+    elif current_mode == "2d":
+        display_2d()
+    elif current_mode == "3d":
+        display_3d()
+
+    glutSwapBuffers()
+
+def display_menu():
+    glColor3f(1.0, 1.0, 1.0)
+    draw_text(-0.8, 0.4, "=== PILIH MODE ===")
+    draw_text(-0.8, 0.2, "1. Grafik 2D")
+    draw_text(-0.8, 0.0, "2. Grafik 3D")
+    draw_text(-0.8, -0.4, "ESC = Keluar")
+
+def display_2d():
+    glColor3f(1.0, 1.0, 1.0)
+    for obj in objects:
+        shape, p1, p2, color = obj
+        glColor3f(*color)
+        if shape == 'point':
+            draw_point(*p1)
+        elif shape == 'line':
+            draw_line(p1, p2)
+        elif shape == 'rect':
+            draw_rect(p1, p2)
+        elif shape == 'ellipse':
+            draw_ellipse(p1, p2)
+    draw_text(-0.95, -0.95, "Mode 2D - Gunakan klik mouse, ESC = kembali ke menu")
+    glFlush()
+
+def display_3d():
+    global angle_x, angle_y
+
+    gluLookAt(3, 3, 5, 0, 0, 0, 0, 1, 0)
+    glRotatef(angle_x, 1, 0, 0)
+    glRotatef(angle_y, 0, 1, 0)
+
+    mat_diffuse = [0.8, 0.3, 0.2, 1.0]
+    glMaterialfv(GL_FRONT, GL_DIFFUSE, mat_diffuse)
+
+    glutSolidCube(2.0)
+
+    # Draw persistent text overlay
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    glOrtho(0, WINDOW_WIDTH, 0, WINDOW_HEIGHT, -1, 1)
+
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+
+    glDisable(GL_LIGHTING)
+    glColor3f(0, 0, 0)
+    glRasterPos2f(10, 10)
+    for ch in "Mode 3D - Drag mouse kiri, ESC = kembali ke menu.":
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_12, ord(ch))
+    glEnable(GL_LIGHTING)
+
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+def draw_point(x, y):
+    glPointSize(5)
+    glBegin(GL_POINTS)
+    glVertex2f(x, y)
+    glEnd()
+
+def draw_line(p1, p2):
+    glLineWidth(line_width)
+    glBegin(GL_LINES)
+    glVertex2f(*p1)
+    glVertex2f(*p2)
+    glEnd()
+
+def draw_rect(p1, p2):
+    glLineWidth(line_width)
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(p1[0], p1[1])
+    glVertex2f(p2[0], p1[1])
+    glVertex2f(p2[0], p2[1])
+    glVertex2f(p1[0], p2[1])
+    glEnd()
+
+def draw_ellipse(p1, p2):
+    glLineWidth(line_width)
+    glBegin(GL_LINE_LOOP)
+    cx = (p1[0] + p2[0]) / 2
+    cy = (p1[1] + p2[1]) / 2
+    rx = abs(p1[0] - p2[0]) / 2
+    ry = abs(p1[1] - p2[1]) / 2
+    for i in range(360):
+        angle = i * 3.14159 / 180
+        x = cx + rx * cos(angle)
+        y = cy + ry * sin(angle)
+        glVertex2f(x, y)
+    glEnd()
+
+def screen_to_gl(x, y):
+    return (x / WINDOW_WIDTH * 2 - 1, -(y / WINDOW_HEIGHT * 2 - 1))
+
+def mouse_func(button, state, x, y):
+    global start_point
+    if current_mode != "2d":
+        return
+    if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
+        gl_x, gl_y = screen_to_gl(x, y)
+        start_point = (gl_x, gl_y)
+    elif button == GLUT_LEFT_BUTTON and state == GLUT_UP and start_point:
+        gl_x, gl_y = screen_to_gl(x, y)
+        end_point = (gl_x, gl_y)
+        objects.append((mode, start_point, end_point, current_color))
+        start_point = None
+        glutPostRedisplay()
+
+def keyboard_func(key, x, y):
+    global current_mode, current_color, line_width, mode
+    if current_mode == "menu":
+        if key == b'1':
+            current_mode = "2d"
+            reshape(WINDOW_WIDTH, WINDOW_HEIGHT)
+            glutPostRedisplay()
+        elif key == b'2':
+            current_mode = "3d"
+            init_3d()
+            reshape(WINDOW_WIDTH, WINDOW_HEIGHT)
+            glutPostRedisplay()
+        elif key == b'\x1b':
+            sys.exit()
+    else:
+        if key == b'\x1b':
+            current_mode = "menu"
+            reshape(WINDOW_WIDTH, WINDOW_HEIGHT)
+            glutPostRedisplay()
+        elif current_mode == "2d":
+            if key == b'r':
+                current_color = (1.0, 0.0, 0.0)
+            elif key == b'g':
+                current_color = (0.0, 1.0, 0.0)
+            elif key == b'b':
+                current_color = (0.0, 0.0, 1.0)
+            elif key == b'+':
+                line_width += 1
+            elif key == b'-':
+                line_width = max(1, line_width - 1)
+            elif key == b'1':
+                mode = 'point'
+            elif key == b'2':
+                mode = 'line'
+            elif key == b'3':
+                mode = 'rect'
+            elif key == b'4':
+                mode = 'ellipse'
+            glutPostRedisplay()
+
+def reshape(w, h):
+    global WINDOW_WIDTH, WINDOW_HEIGHT
+    WINDOW_WIDTH = w
+    WINDOW_HEIGHT = h
+
+    glViewport(0, 0, w, h)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+
+    if current_mode == "3d":
+        gluPerspective(45, w / h if h else 1, 1.0, 50.0)
+    else:
+        glOrtho(-1, 1, -1, 1, -1, 1)
+
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+
+def init_3d():
+    glEnable(GL_DEPTH_TEST)
+    glEnable(GL_LIGHTING)
+    glEnable(GL_LIGHT0)
+
+    ambient = [0.2, 0.1, 0.1, 1.0]
+    diffuse = [0.7, 0.3, 0.2, 1.0]
+    specular = [1.0, 1.0, 1.0, 1.0]
+    position = [2.0, 2.0, 2.0, 1.0]
+
+    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient)
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse)
+    glLightfv(GL_LIGHT0, GL_SPECULAR, specular)
+    glLightfv(GL_LIGHT0, GL_POSITION, position)
+
+    mat_specular = [1.0, 1.0, 1.0, 1.0]
+    glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular)
+    glMaterialf(GL_FRONT, GL_SHININESS, 50.0)
+
+def mouse(button, state, x, y):
+    global is_dragging, last_x, last_y
+    if current_mode != "3d":
+        return
+    if button == GLUT_LEFT_BUTTON:
+        if state == GLUT_DOWN:
+            is_dragging = True
+            last_x = x
+            last_y = y
+        elif state == GLUT_UP:
+            is_dragging = False
+
+def motion(x, y):
+    global angle_x, angle_y, last_x, last_y
+    if current_mode != "3d" or not is_dragging:
+        return
+    dx = x - last_x
+    dy = y - last_y
+    angle_x += dy * 0.5
+    angle_y += dx * 0.5
+    last_x = x
+    last_y = y
+    glutPostRedisplay()
+
+def main():
+    glutInit(sys.argv)
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)
+    glutInitWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+    glutCreateWindow(b"Menu OpenGL")
+
+    glClearColor(0.0, 0.0, 0.0, 1.0)
+
+    glutDisplayFunc(display)
+    glutReshapeFunc(reshape)
+    glutKeyboardFunc(keyboard_func)
+    glutMouseFunc(mouse)
+    glutMotionFunc(motion)
+    glutMouseFunc(mouse_func)  # for 2D drawing
+
+    glutMainLoop()
+
+if _name_ == "_main_":
+    main()
